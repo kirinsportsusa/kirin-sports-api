@@ -83,6 +83,11 @@ function kirin_api_product_summary( $product ) {
 function kirin_api_format_product( $product ) {
 
 	$data = kirin_api_product_summary( $product );
+	$data['formatted_price'] = html_entity_decode(
+		$data['formatted_price'],
+		ENT_QUOTES,
+		get_bloginfo( 'charset' )
+	);
 
 	$regular_price = $product->get_regular_price();
 	$sale_price    = $product->get_sale_price();
