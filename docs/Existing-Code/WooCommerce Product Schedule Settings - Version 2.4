@@ -1,0 +1,1366 @@
+/**
+ * Kirin Sports
+ * WooCommerce Product Schedule Settings
+ *
+ * Version: 2.4
+ *
+ * Generic schedule configuration for WooCommerce products.
+ *
+ * Current use:
+ * - Training schedules
+ *
+ * Future use:
+ * - Game schedules
+ * - Tournament schedules
+ * - Other program schedules
+ *
+ * IMPORTANT:
+ * Existing internal meta keys are preserved so the
+ * current Schedule Engine remains compatible.
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+
+/**
+ * =========================================================
+ * PRODUCT SCHEDULE SETTINGS
+ * =========================================================
+ */
+
+add_action(
+	'woocommerce_product_options_general_product_data',
+	function () {
+
+		echo '<div class="options_group kirin-schedule-settings">';
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Section Heading
+		 * -----------------------------------------------------
+		 */
+
+		echo '<div class="kirin-schedule-heading">';
+
+		echo '<h3>Schedule</h3>';
+
+		echo '<p>';
+		echo 'Configure the dates and age-group time schedules for this program.';
+		echo '</p>';
+
+		echo '</div>';
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Enable Schedule
+		 * -----------------------------------------------------
+		 */
+
+		woocommerce_wp_checkbox(
+			array(
+				'id'          => '_kirin_training_enabled',
+				'label'       => 'Enable Schedule',
+				'description' => 'Enable a schedule for this program.',
+				'desc_tip'    => true,
+			)
+		);
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Start Date
+		 *
+		 * Native WooCommerce field.
+		 *
+		 * The help icon is moved by the admin JavaScript
+		 * below so that it appears AFTER the input.
+		 * -----------------------------------------------------
+		 */
+
+		woocommerce_wp_text_input(
+			array(
+				'id'                => '_kirin_training_start_date',
+				'label'             => 'Start Date',
+				'type'              => 'date',
+				'description'       => 'First date on which the schedule is active.',
+				'desc_tip'          => true,
+				'custom_attributes' => array(
+					'style' => 'width:400px;',
+				),
+			)
+		);
+
+
+		/**
+		 * -----------------------------------------------------
+		 * End Date
+		 * -----------------------------------------------------
+		 */
+
+		woocommerce_wp_text_input(
+			array(
+				'id'                => '_kirin_training_end_date',
+				'label'             => 'End Date',
+				'type'              => 'date',
+				'description'       => 'Last date on which the schedule is active.',
+				'desc_tip'          => true,
+				'custom_attributes' => array(
+					'style' => 'width:400px;',
+				),
+			)
+		);
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Location
+		 * -----------------------------------------------------
+		 */
+
+		woocommerce_wp_text_input(
+			array(
+				'id'                => '_kirin_training_location',
+				'label'             => 'Location',
+				'type'              => 'text',
+				'description'       => 'Location displayed on the customer schedule.',
+				'desc_tip'          => true,
+				'placeholder'       => 'Example: Kirin Sports Training Center',
+				'custom_attributes' => array(
+					'style' => 'width:400px;',
+				),
+			)
+		);
+
+
+		/**
+		 * =====================================================
+		 * SCHEDULE DAYS
+		 * =====================================================
+		 */
+
+		$selected_days = get_post_meta(
+			get_the_ID(),
+			'_kirin_training_days',
+			true
+		);
+
+		if ( ! is_array( $selected_days ) ) {
+			$selected_days = array();
+		}
+
+
+		$days = array(
+			'sunday'    => 'Sunday',
+			'monday'    => 'Monday',
+			'tuesday'   => 'Tuesday',
+			'wednesday' => 'Wednesday',
+			'thursday'  => 'Thursday',
+			'friday'    => 'Friday',
+			'saturday'  => 'Saturday',
+		);
+
+
+		echo '<div class="kirin-schedule-days-field">';
+
+		echo '<div class="kirin-schedule-field-label">';
+		echo 'Schedule Days';
+		echo '</div>';
+
+		echo '<div class="kirin-schedule-days-content">';
+
+		echo '<div class="kirin-schedule-days-grid">';
+
+
+		foreach ( $days as $day_key => $day_label ) {
+
+			echo '<label>';
+
+			echo '<input
+				type="checkbox"
+				name="_kirin_training_days[]"
+				value="' . esc_attr( $day_key ) . '"
+				' .
+				checked(
+					in_array(
+						$day_key,
+						$selected_days,
+						true
+					),
+					true,
+					false
+				)
+				.
+			'>';
+
+			echo '<span>';
+			echo esc_html( $day_label );
+			echo '</span>';
+
+			echo '</label>';
+		}
+
+
+		echo '</div>';
+
+		echo '<div class="kirin-schedule-description">';
+		echo 'Select the days when this schedule occurs.';
+		echo '</div>';
+
+		echo '</div>';
+
+		echo '</div>';
+
+
+		/**
+		 * =====================================================
+		 * AGE GROUP SCHEDULE
+		 * =====================================================
+		 */
+
+		$age_schedule = get_post_meta(
+			get_the_ID(),
+			'_kirin_age_schedule',
+			true
+		);
+
+		if ( ! is_array( $age_schedule ) ) {
+			$age_schedule = array();
+		}
+
+
+		echo '<div class="kirin-age-schedule-section">';
+
+		echo '<h4>Age Group Schedule</h4>';
+
+		echo '<p>';
+		echo 'Set the schedule time for each birth-year group.';
+		echo '</p>';
+
+		echo '<div class="kirin-age-schedule-table-wrapper">';
+
+		echo '<table class="widefat kirin-age-schedule-table">';
+
+		echo '<thead>';
+
+		echo '<tr>';
+
+		echo '<th class="birth-from">';
+		echo 'Birth Year From';
+		echo '</th>';
+
+		echo '<th class="birth-to">';
+		echo 'Birth Year To';
+		echo '</th>';
+
+		echo '<th class="start-time">';
+		echo 'Start Time';
+		echo '</th>';
+
+		echo '<th class="end-time">';
+		echo 'End Time';
+		echo '</th>';
+
+		echo '<th class="actions">';
+		echo '</th>';
+
+		echo '</tr>';
+
+		echo '</thead>';
+
+		echo '<tbody id="kirin-age-schedule-rows">';
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Existing Saved Rows
+		 * -----------------------------------------------------
+		 */
+
+		if ( ! empty( $age_schedule ) ) {
+
+			foreach ( $age_schedule as $index => $rule ) {
+
+				$birth_from = isset( $rule['birth_from'] )
+					? $rule['birth_from']
+					: '';
+
+				$birth_to = isset( $rule['birth_to'] )
+					? $rule['birth_to']
+					: '';
+
+				$start_time = isset( $rule['start_time'] )
+					? $rule['start_time']
+					: '';
+
+				$end_time = isset( $rule['end_time'] )
+					? $rule['end_time']
+					: '';
+
+
+				echo '<tr>';
+
+
+				/**
+				 * Birth Year From
+				 */
+
+				echo '<td>';
+
+				echo '<input
+					type="number"
+					name="_kirin_age_schedule[' .
+						esc_attr( $index ) .
+						'][birth_from]"
+					value="' .
+						esc_attr( $birth_from ) .
+					'"
+					min="1900"
+					max="2100"
+				>';
+
+				echo '</td>';
+
+
+				/**
+				 * Birth Year To
+				 */
+
+				echo '<td>';
+
+				echo '<input
+					type="number"
+					name="_kirin_age_schedule[' .
+						esc_attr( $index ) .
+						'][birth_to]"
+					value="' .
+						esc_attr( $birth_to ) .
+					'"
+					min="1900"
+					max="2100"
+				>';
+
+				echo '</td>';
+
+
+				/**
+				 * Start Time
+				 */
+
+				echo '<td>';
+
+				echo '<input
+					type="time"
+					name="_kirin_age_schedule[' .
+						esc_attr( $index ) .
+						'][start_time]"
+					value="' .
+						esc_attr( $start_time ) .
+					'"
+				>';
+
+				echo '</td>';
+
+
+				/**
+				 * End Time
+				 */
+
+				echo '<td>';
+
+				echo '<input
+					type="time"
+					name="_kirin_age_schedule[' .
+						esc_attr( $index ) .
+						'][end_time]"
+					value="' .
+						esc_attr( $end_time ) .
+					'"
+				>';
+
+				echo '</td>';
+
+
+				/**
+				 * Remove
+				 */
+
+				echo '<td>';
+
+				echo '<button
+					type="button"
+					class="button kirin-remove-age-row"
+				>';
+				echo 'Remove';
+				echo '</button>';
+
+				echo '</td>';
+
+				echo '</tr>';
+			}
+		}
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Empty Initial Row
+		 * -----------------------------------------------------
+		 */
+
+		if ( empty( $age_schedule ) ) {
+
+			echo '<tr>';
+
+			echo '<td>';
+
+			echo '<input
+				type="number"
+				name="_kirin_age_schedule[0][birth_from]"
+				min="1900"
+				max="2100"
+			>';
+
+			echo '</td>';
+
+
+			echo '<td>';
+
+			echo '<input
+				type="number"
+				name="_kirin_age_schedule[0][birth_to]"
+				min="1900"
+				max="2100"
+			>';
+
+			echo '</td>';
+
+
+			echo '<td>';
+
+			echo '<input
+				type="time"
+				name="_kirin_age_schedule[0][start_time]"
+			>';
+
+			echo '</td>';
+
+
+			echo '<td>';
+
+			echo '<input
+				type="time"
+				name="_kirin_age_schedule[0][end_time]"
+			>';
+
+			echo '</td>';
+
+
+			echo '<td>';
+
+			echo '<button
+				type="button"
+				class="button kirin-remove-age-row"
+			>';
+			echo 'Remove';
+			echo '</button>';
+
+			echo '</td>';
+
+			echo '</tr>';
+		}
+
+
+		echo '</tbody>';
+
+		echo '</table>';
+
+		echo '</div>';
+
+
+		/**
+		 * Add Age Group
+		 */
+
+		echo '<p class="kirin-add-age-group">';
+
+		echo '<button
+			type="button"
+			class="button"
+			id="kirin-add-age-row"
+		>';
+		echo '+ Add Age Group';
+		echo '</button>';
+
+		echo '</p>';
+
+		echo '</div>';
+
+		echo '</div>';
+
+
+		/**
+		 * =====================================================
+		 * ADMIN CSS
+		 * =====================================================
+		 *
+		 * IMPORTANT:
+		 *
+		 * We do NOT style or reposition the WooCommerce
+		 * .woocommerce-help-tip elements.
+		 *
+		 * WooCommerce controls the help-tip itself.
+		 */
+
+		?>
+
+		<style>
+
+		/* =====================================================
+		 * Schedule Section
+		 * ===================================================== */
+
+		.kirin-schedule-settings {
+			padding-bottom: 20px;
+		}
+
+
+		.kirin-schedule-heading {
+			padding: 18px 12px 8px;
+		}
+
+
+		.kirin-schedule-heading h3 {
+			margin: 0 0 5px;
+			font-size: 16px;
+			font-weight: 700;
+		}
+
+
+		.kirin-schedule-heading p {
+			margin: 0;
+			color: #666;
+		}
+
+
+		/* =====================================================
+		 * Schedule Days
+		 * ===================================================== */
+
+		.kirin-schedule-days-field {
+
+			display: flex;
+
+			align-items: flex-start;
+
+			padding: 5px 12px 15px;
+
+			margin: 0;
+		}
+
+
+		.kirin-schedule-field-label {
+
+			width: 150px;
+
+			flex: 0 0 150px;
+
+			padding-top: 4px;
+
+			box-sizing: border-box;
+
+			font-weight: 600;
+		}
+
+
+		.kirin-schedule-days-content {
+
+			flex: 1;
+
+			min-width: 0;
+		}
+
+
+		.kirin-schedule-days-grid {
+
+			display: grid;
+
+			grid-template-columns:
+				repeat(
+					4,
+					minmax(120px, 1fr)
+				);
+
+			gap: 8px 20px;
+
+			max-width: 700px;
+		}
+
+
+		.kirin-schedule-days-grid label {
+
+			display: flex;
+
+			align-items: center;
+
+			gap: 6px;
+
+			margin: 0;
+
+			font-weight: 400;
+
+			cursor: pointer;
+		}
+
+
+		.kirin-schedule-days-grid input {
+
+			margin: 0;
+		}
+
+
+		.kirin-schedule-description {
+
+			margin-top: 8px;
+
+			color: #666;
+
+			font-size: 12px;
+		}
+
+
+		/* =====================================================
+		 * Age Group Schedule
+		 * ===================================================== */
+
+		.kirin-age-schedule-section {
+
+			padding: 10px 12px 0;
+		}
+
+
+		.kirin-age-schedule-section h4 {
+
+			margin: 10px 0 5px;
+
+			font-size: 14px;
+
+			font-weight: 700;
+		}
+
+
+		.kirin-age-schedule-section > p {
+
+			margin: 0 0 12px;
+
+			color: #666;
+		}
+
+
+		.kirin-age-schedule-table-wrapper {
+
+			max-width: 850px;
+
+			overflow-x: auto;
+		}
+
+
+		.kirin-age-schedule-table {
+
+			width: 100%;
+
+			table-layout: fixed;
+
+			border-collapse: collapse;
+		}
+
+
+		.kirin-age-schedule-table th,
+		.kirin-age-schedule-table td {
+
+			padding: 8px;
+
+			vertical-align: middle;
+		}
+
+
+		.kirin-age-schedule-table th {
+
+			font-weight: 600;
+		}
+
+
+		.kirin-age-schedule-table .birth-from {
+
+			width: 19%;
+		}
+
+
+		.kirin-age-schedule-table .birth-to {
+
+			width: 19%;
+		}
+
+
+		.kirin-age-schedule-table .start-time {
+
+			width: 24%;
+		}
+
+
+		.kirin-age-schedule-table .end-time {
+
+			width: 24%;
+		}
+
+
+		.kirin-age-schedule-table .actions {
+
+			width: 14%;
+		}
+
+
+		.kirin-age-schedule-table input[type="number"],
+		.kirin-age-schedule-table input[type="time"] {
+
+			width: 100%;
+
+			box-sizing: border-box;
+
+			margin: 0;
+		}
+
+
+		.kirin-age-schedule-table .button {
+
+			width: 100%;
+
+			white-space: nowrap;
+		}
+
+
+		.kirin-add-age-group {
+
+			margin-top: 10px !important;
+		}
+
+
+		/* =====================================================
+		 * Responsive
+		 * ===================================================== */
+
+		@media (max-width: 900px) {
+
+			.kirin-schedule-days-grid {
+
+				grid-template-columns:
+					repeat(
+						2,
+						minmax(120px, 1fr)
+					);
+
+			}
+
+		}
+
+
+		@media (max-width: 600px) {
+
+			.kirin-schedule-days-field {
+
+				display: block;
+			}
+
+
+			.kirin-schedule-field-label {
+
+				width: auto;
+
+				margin-bottom: 8px;
+			}
+
+
+			.kirin-schedule-days-grid {
+
+				grid-template-columns:
+					1fr 1fr;
+
+			}
+
+		}
+
+		</style>
+
+
+		<script>
+
+		jQuery(document).ready(function($) {
+
+
+			/**
+			 * =================================================
+			 * FIX DATE FIELD HELP ICON POSITION
+			 * =================================================
+			 *
+			 * WooCommerce normally creates:
+			 *
+			 * Label
+			 * Help Tip
+			 * Input
+			 *
+			 * for these date fields.
+			 *
+			 * We move ONLY the help tip node so that
+			 * the visual order becomes:
+			 *
+			 * Label → Input → ?
+			 *
+			 * We do not change WooCommerce tooltip CSS.
+			 */
+
+			function kirinMoveDateHelpTips() {
+
+				var fields = [
+					'#_kirin_training_start_date',
+					'#_kirin_training_end_date'
+				];
+
+
+				$.each(
+					fields,
+					function(index, selector) {
+
+						var input =
+							$(selector);
+
+
+						if (
+							! input.length
+						) {
+
+							return;
+
+						}
+
+
+						var field =
+							input.closest(
+								'p.form-field'
+							);
+
+
+						if (
+							! field.length
+						) {
+
+							return;
+
+						}
+
+
+						var helpTip =
+							field.find(
+								'.woocommerce-help-tip'
+							);
+
+
+						if (
+							! helpTip.length
+						) {
+
+							return;
+
+						}
+
+
+						/**
+						 * Only move it if it is not already
+						 * immediately after the input.
+						 */
+
+						if (
+							! helpTip.prev().is(
+								input
+							)
+						) {
+
+							helpTip.insertAfter(
+								input
+							);
+
+						}
+
+					}
+				);
+
+			}
+
+
+			/**
+			 * Run after WooCommerce has initialized
+			 * its admin controls.
+			 */
+
+			kirinMoveDateHelpTips();
+
+
+			setTimeout(
+				kirinMoveDateHelpTips,
+				100
+			);
+
+
+			setTimeout(
+				kirinMoveDateHelpTips,
+				500
+			);
+
+
+			/**
+			 * =================================================
+			 * ADD AGE GROUP
+			 * =================================================
+			 */
+
+			$('#kirin-add-age-row').on(
+				'click',
+				function() {
+
+
+					var tbody =
+						$('#kirin-age-schedule-rows');
+
+
+					var index =
+						tbody.find('tr').length;
+
+
+					var row = `
+
+						<tr>
+
+							<td>
+
+								<input
+									type="number"
+									name="_kirin_age_schedule[${index}][birth_from]"
+									min="1900"
+									max="2100"
+								>
+
+							</td>
+
+
+							<td>
+
+								<input
+									type="number"
+									name="_kirin_age_schedule[${index}][birth_to]"
+									min="1900"
+									max="2100"
+								>
+
+							</td>
+
+
+							<td>
+
+								<input
+									type="time"
+									name="_kirin_age_schedule[${index}][start_time]"
+								>
+
+							</td>
+
+
+							<td>
+
+								<input
+									type="time"
+									name="_kirin_age_schedule[${index}][end_time]"
+								>
+
+							</td>
+
+
+							<td>
+
+								<button
+									type="button"
+									class="button kirin-remove-age-row"
+								>
+									Remove
+								</button>
+
+							</td>
+
+						</tr>
+
+					`;
+
+
+					tbody.append(row);
+
+				}
+			);
+
+
+			/**
+			 * =================================================
+			 * REMOVE AGE GROUP
+			 * =================================================
+			 */
+
+			$(document).on(
+				'click',
+				'.kirin-remove-age-row',
+				function() {
+
+					$(this)
+						.closest('tr')
+						.remove();
+
+				}
+			);
+
+		});
+
+		</script>
+
+		<?php
+
+	}
+);
+
+
+/**
+ * =========================================================
+ * SAVE SCHEDULE SETTINGS
+ * =========================================================
+ */
+
+add_action(
+	'woocommerce_admin_process_product_object',
+	function ( $product ) {
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Enable Schedule
+		 * -----------------------------------------------------
+		 */
+
+		$product->update_meta_data(
+			'_kirin_training_enabled',
+			isset(
+				$_POST['_kirin_training_enabled']
+			)
+				? 'yes'
+				: 'no'
+		);
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Start Date
+		 * -----------------------------------------------------
+		 */
+
+		if (
+			isset(
+				$_POST['_kirin_training_start_date']
+			)
+		) {
+
+			$product->update_meta_data(
+				'_kirin_training_start_date',
+				sanitize_text_field(
+					wp_unslash(
+						$_POST[
+							'_kirin_training_start_date'
+						]
+					)
+				)
+			);
+
+		}
+
+
+		/**
+		 * -----------------------------------------------------
+		 * End Date
+		 * -----------------------------------------------------
+		 */
+
+		if (
+			isset(
+				$_POST['_kirin_training_end_date']
+			)
+		) {
+
+			$product->update_meta_data(
+				'_kirin_training_end_date',
+				sanitize_text_field(
+					wp_unslash(
+						$_POST[
+							'_kirin_training_end_date'
+						]
+					)
+				)
+			);
+
+		}
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Location
+		 * -----------------------------------------------------
+		 */
+
+		if (
+			isset(
+				$_POST['_kirin_training_location']
+			)
+		) {
+
+			$product->update_meta_data(
+				'_kirin_training_location',
+				sanitize_text_field(
+					wp_unslash(
+						$_POST[
+							'_kirin_training_location'
+						]
+					)
+				)
+			);
+
+		}
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Schedule Days
+		 * -----------------------------------------------------
+		 */
+
+		$days = array();
+
+
+		if (
+			isset(
+				$_POST['_kirin_training_days']
+			)
+			&&
+			is_array(
+				$_POST['_kirin_training_days']
+			)
+		) {
+
+			$allowed_days = array(
+				'sunday',
+				'monday',
+				'tuesday',
+				'wednesday',
+				'thursday',
+				'friday',
+				'saturday',
+			);
+
+
+			foreach (
+				$_POST['_kirin_training_days']
+				as $day
+			) {
+
+				$day =
+					sanitize_text_field(
+						wp_unslash(
+							$day
+						)
+					);
+
+
+				if (
+					in_array(
+						$day,
+						$allowed_days,
+						true
+					)
+				) {
+
+					$days[] =
+						$day;
+
+				}
+
+			}
+
+		}
+
+
+		$product->update_meta_data(
+			'_kirin_training_days',
+			$days
+		);
+
+
+		/**
+		 * -----------------------------------------------------
+		 * Age Group Schedule
+		 * -----------------------------------------------------
+		 */
+
+		$age_schedule = array();
+
+
+		if (
+			isset(
+				$_POST['_kirin_age_schedule']
+			)
+			&&
+			is_array(
+				$_POST['_kirin_age_schedule']
+			)
+		) {
+
+			foreach (
+				$_POST['_kirin_age_schedule']
+				as $rule
+			) {
+
+				if (
+					! is_array( $rule )
+				) {
+
+					continue;
+
+				}
+
+
+				$birth_from =
+					isset(
+						$rule['birth_from']
+					)
+						? absint(
+							$rule['birth_from']
+						)
+						: 0;
+
+
+				$birth_to =
+					isset(
+						$rule['birth_to']
+					)
+						? absint(
+							$rule['birth_to']
+						)
+						: 0;
+
+
+				$start_time =
+					isset(
+						$rule['start_time']
+					)
+						? sanitize_text_field(
+							wp_unslash(
+								$rule['start_time']
+							)
+						)
+						: '';
+
+
+				$end_time =
+					isset(
+						$rule['end_time']
+					)
+						? sanitize_text_field(
+							wp_unslash(
+								$rule['end_time']
+							)
+						)
+						: '';
+
+
+				/**
+				 * Skip completely empty rows.
+				 */
+
+				if (
+					! $birth_from &&
+					! $birth_to &&
+					! $start_time &&
+					! $end_time
+				) {
+
+					continue;
+
+				}
+
+
+				/**
+				 * Skip incomplete rows.
+				 */
+
+				if (
+					! $birth_from ||
+					! $birth_to ||
+					! $start_time ||
+					! $end_time
+				) {
+
+					continue;
+
+				}
+
+
+				/**
+				 * Normalize reversed birth-year ranges.
+				 */
+
+				if (
+					$birth_from > $birth_to
+				) {
+
+					$temp =
+						$birth_from;
+
+					$birth_from =
+						$birth_to;
+
+					$birth_to =
+						$temp;
+
+				}
+
+
+				$age_schedule[] = array(
+
+					'birth_from' =>
+						$birth_from,
+
+					'birth_to' =>
+						$birth_to,
+
+					'start_time' =>
+						$start_time,
+
+					'end_time' =>
+						$end_time,
+
+				);
+
+			}
+
+		}
+
+
+		$product->update_meta_data(
+			'_kirin_age_schedule',
+			$age_schedule
+		);
+
+	}
+);

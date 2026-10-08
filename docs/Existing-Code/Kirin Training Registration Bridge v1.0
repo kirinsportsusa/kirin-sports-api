@@ -1,0 +1,1139 @@
+/**
+ * Kirin Sports
+ * Training Registration Bridge
+ *
+ * Version 1.0
+ *
+ * PURPOSE:
+ * Connect Forminator player registration data
+ * to WooCommerce training-program orders.
+ *
+ * PLAYER DATA:
+ * - First Name
+ * - Last Name
+ * - Date of Birth
+ * - Birth Year
+ * - Gender
+ *
+ * IMPORTANT:
+ * - No hardcoded product ID
+ * - No hardcoded Forminator form ID
+ * - Only runs for products with
+ *   "Enable Training Schedule" enabled
+ *
+ * FLOW:
+ *
+ * Registration Page
+ *       ↓
+ * Forminator
+ *       ↓
+ * Temporary registration token
+ *       ↓
+ * WooCommerce Cart
+ *       ↓
+ * WooCommerce Order Item
+ *
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+
+/**
+ * ============================================================
+ * SETTINGS
+ * ============================================================
+ */
+
+define(
+	'KIRIN_TRAINING_BRIDGE_VERSION',
+	'1.0'
+);
+
+define(
+	'KIRIN_TRAINING_COOKIE',
+	'kirin_training_registration_token'
+);
+
+define(
+	'KIRIN_TRAINING_TRANSIENT_PREFIX',
+	'kirin_training_registration_'
+);
+
+
+/**
+ * ============================================================
+ * HELPER
+ *
+ * Get the registration token from the browser.
+ * ============================================================
+ */
+
+function kirin_training_get_token() {
+
+	if (
+		empty(
+			$_COOKIE[
+				KIRIN_TRAINING_COOKIE
+			]
+		)
+	) {
+		return '';
+	}
+
+	$token =
+		sanitize_text_field(
+			wp_unslash(
+				$_COOKIE[
+					KIRIN_TRAINING_COOKIE
+				]
+			)
+		);
+
+	/*
+	 * Token should be a UUID-like string.
+	 */
+	if (
+		! preg_match(
+			'/^[a-f0-9-]{20,100}$/i',
+			$token
+		)
+	) {
+		return '';
+	}
+
+	return $token;
+}
+
+
+/**
+ * ============================================================
+ * HELPER
+ *
+ * Create the transient key.
+ * ============================================================
+ */
+
+function kirin_training_get_transient_key(
+	$token
+) {
+
+	return
+		KIRIN_TRAINING_TRANSIENT_PREFIX .
+		md5( $token );
+}
+
+
+/**
+ * ============================================================
+ * HELPER
+ *
+ * Check whether a product has Training Schedule enabled.
+ * ============================================================
+ */
+
+function kirin_training_product_enabled(
+	$product_id
+) {
+
+	$product =
+		wc_get_product(
+			$product_id
+		);
+
+	if ( ! $product ) {
+		return false;
+	}
+
+	$enabled =
+		$product->get_meta(
+			'_kirin_training_enabled',
+			true
+		);
+
+	return (
+		'yes' === $enabled
+	);
+}
+
+
+/**
+ * ============================================================
+ * 1. CREATE REGISTRATION TOKEN
+ *
+ * The registration page URL contains:
+ *
+ * /registration/?ks_product=1234
+ *
+ * We create a temporary browser token so that
+ * the Forminator AJAX request knows which product
+ * the customer is registering for.
+ * ============================================================
+ */
+
+add_action(
+	'wp_footer',
+	function () {
+
+		if (
+			! is_page(
+				'registration'
+			)
+		) {
+			return;
+		}
+
+		if (
+			empty(
+				$_GET['ks_product']
+			)
+		) {
+			return;
+		}
+
+		$product_id =
+			absint(
+				$_GET['ks_product']
+			);
+
+		if ( ! $product_id ) {
+			return;
+		}
+
+		/*
+		 * Only create the token for products
+		 * that actually use Training Schedule.
+		 */
+		if (
+			! kirin_training_product_enabled(
+				$product_id
+			)
+		) {
+			return;
+		}
+
+		?>
+
+		<script>
+
+		(function () {
+
+			const productId =
+				<?php
+				echo esc_js(
+					$product_id
+				);
+				?>;
+
+			/*
+			 * Generate a unique registration token.
+			 */
+			const token =
+				(
+					window.crypto &&
+					typeof window.crypto.randomUUID ===
+						"function"
+				)
+					? window.crypto.randomUUID()
+					: (
+						Date.now()
+						+ "-"
+						+ Math.random()
+							.toString(16)
+							.substring(2)
+						+ "-"
+						+ Math.random()
+							.toString(16)
+							.substring(2)
+					);
+
+			/*
+			 * Store token for 30 minutes.
+			 *
+			 * The cookie is only used to connect
+			 * this registration to the correct
+			 * product.
+			 */
+			document.cookie =
+				"<?php
+				echo esc_js(
+					KIRIN_TRAINING_COOKIE
+				);
+				?>="
+				+ encodeURIComponent(token)
+				+ "; path=/; max-age=1800; SameSite=Lax; Secure";
+
+			console.log(
+				"Kirin Training Bridge v1.0"
+			);
+
+			console.log(
+				"Kirin Training Product:",
+				productId
+			);
+
+			console.log(
+				"Kirin Training Registration Token:",
+				token
+			);
+
+		})();
+
+		</script>
+
+		<?php
+
+	}
+);
+
+
+/**
+ * ============================================================
+ * 2. CAPTURE FORMINATOR SUBMISSION
+ *
+ * Forminator gives us:
+ * - form_id
+ * - saved entry
+ *
+ * We verify that the submitted Forminator form
+ * matches the Training Schedule product's
+ * configured Registration Form ID.
+ * ============================================================
+ */
+
+add_action(
+	'forminator_form_after_save_entry',
+	function (
+		$form_id,
+		$response
+	) {
+
+		$token =
+			kirin_training_get_token();
+
+		if ( ! $token ) {
+			return;
+		}
+
+		/*
+		 * Find the temporary registration context.
+		 *
+		 * At this point we don't have the product
+		 * in the transient yet, so the product ID
+		 * is passed through a second cookie.
+		 *
+		 * See section 1.5 below.
+		 */
+		if (
+			empty(
+				$_COOKIE[
+					'kirin_training_product_id'
+				]
+			)
+		) {
+			return;
+		}
+
+		$product_id =
+			absint(
+				wp_unslash(
+					$_COOKIE[
+						'kirin_training_product_id'
+					]
+				)
+			);
+
+		if ( ! $product_id ) {
+			return;
+		}
+
+		/*
+		 * Verify Training Schedule is enabled.
+		 */
+		if (
+			! kirin_training_product_enabled(
+				$product_id
+			)
+		) {
+			return;
+		}
+
+		$product =
+			wc_get_product(
+				$product_id
+			);
+
+		if ( ! $product ) {
+			return;
+		}
+
+		/*
+		 * Verify the Forminator form ID
+		 * configured on the product.
+		 */
+		$configured_form_id =
+			absint(
+				$product->get_meta(
+					'_kirin_form_id',
+					true
+				)
+			);
+
+		if (
+			! $configured_form_id ||
+			$configured_form_id !==
+				intval( $form_id )
+		) {
+			return;
+		}
+
+		/*
+		 * Get saved Forminator entry.
+		 */
+		if (
+			! class_exists(
+				'Forminator_Form_Entry_Model'
+			)
+		) {
+			return;
+		}
+
+		$entry =
+			Forminator_Form_Entry_Model::get_latest_entry_by_form_id(
+				$form_id
+			);
+
+		if ( ! $entry ) {
+			return;
+		}
+
+		$meta_data =
+			$entry->meta_data;
+
+		if (
+			! is_array( $meta_data )
+		) {
+			return;
+		}
+
+
+		/**
+		 * --------------------------------------------------------
+		 * Helper to extract repeater fields.
+		 * --------------------------------------------------------
+		 */
+
+		$get_repeater_values =
+			function (
+				$prefix
+			) use (
+				$meta_data
+			) {
+
+				$values =
+					array();
+
+				foreach (
+					$meta_data
+					as $field_name => $field
+				) {
+
+					if (
+						! preg_match(
+							'/^' .
+							preg_quote(
+								$prefix,
+								'/'
+							) .
+							'(?:-(\d+))?$/',
+							$field_name,
+							$matches
+						)
+					) {
+						continue;
+					}
+
+					$index =
+						isset(
+							$matches[1]
+						)
+							? intval(
+								$matches[1]
+							)
+							: 1;
+
+					$value =
+						isset(
+							$field['value']
+						)
+							? $field['value']
+							: '';
+
+					$values[
+						$index
+					] =
+						is_string(
+							$value
+						)
+							? sanitize_text_field(
+								$value
+							)
+							: $value;
+				}
+
+				return $values;
+			};
+
+
+		/*
+		 * Forminator fields:
+		 *
+		 * text-5   = Player First Name
+		 * text-6   = Player Last Name
+		 * date-1   = Date of Birth
+		 * select-1 = Gender
+		 */
+		$first_names =
+			$get_repeater_values(
+				'text-5'
+			);
+
+		$last_names =
+			$get_repeater_values(
+				'text-6'
+			);
+
+		$birth_dates =
+			$get_repeater_values(
+				'date-1'
+			);
+
+		$genders =
+			$get_repeater_values(
+				'select-1'
+			);
+
+
+		/*
+		 * Combine all player indexes.
+		 */
+		$indexes =
+			array_unique(
+				array_merge(
+					array_keys(
+						$first_names
+					),
+					array_keys(
+						$last_names
+					),
+					array_keys(
+						$birth_dates
+					),
+					array_keys(
+						$genders
+					)
+				)
+			);
+
+		sort(
+			$indexes
+		);
+
+
+		$players =
+			array();
+
+
+		foreach (
+			$indexes as $index
+		) {
+
+			$first_name =
+				isset(
+					$first_names[
+						$index
+					]
+				)
+					? $first_names[
+						$index
+					]
+					: '';
+
+			$last_name =
+				isset(
+					$last_names[
+						$index
+					]
+				)
+					? $last_names[
+						$index
+					]
+					: '';
+
+			$birth_date =
+				isset(
+					$birth_dates[
+						$index
+					]
+				)
+					? $birth_dates[
+						$index
+					]
+					: '';
+
+			$gender =
+				isset(
+					$genders[
+						$index
+					]
+				)
+					? $genders[
+						$index
+					]
+					: '';
+
+
+			/*
+			 * Ignore completely empty rows.
+			 */
+			if (
+				! $first_name &&
+				! $last_name &&
+				! $birth_date
+			) {
+				continue;
+			}
+
+
+			/*
+			 * Convert DOB into birth year.
+			 */
+			$birth_year =
+				'';
+
+			if (
+				$birth_date
+			) {
+
+				$date =
+					DateTime::createFromFormat(
+						'm/d/Y',
+						$birth_date
+					);
+
+				if (
+					$date
+				) {
+
+					$birth_year =
+						$date->format(
+							'Y'
+						);
+				}
+			}
+
+
+			$players[] =
+				array(
+					'first_name' =>
+						$first_name,
+
+					'last_name' =>
+						$last_name,
+
+					'birth_date' =>
+						$birth_date,
+
+					'birth_year' =>
+						$birth_year,
+
+					'gender' =>
+						$gender,
+				);
+		}
+
+
+		if (
+			empty( $players )
+		) {
+			return;
+		}
+
+
+		/*
+		 * Store the registration temporarily.
+		 *
+		 * 30 minutes is enough to get from
+		 * registration → checkout.
+		 */
+		set_transient(
+			kirin_training_get_transient_key(
+				$token
+			),
+			array(
+				'product_id' =>
+					$product_id,
+
+				'form_id' =>
+					intval(
+						$form_id
+					),
+
+				'entry_id' =>
+					isset(
+						$entry->entry_id
+					)
+						? intval(
+							$entry->entry_id
+						)
+						: 0,
+
+				'players' =>
+					$players,
+
+				'created' =>
+					time(),
+			),
+			30 * MINUTE_IN_SECONDS
+		);
+
+	},
+	10,
+	2
+);
+
+
+/**
+ * ============================================================
+ * 3. ATTACH PLAYER DATA TO CART ITEM
+ * ============================================================
+ */
+
+add_filter(
+	'woocommerce_add_cart_item_data',
+	function (
+		$cart_item_data,
+		$product_id,
+		$variation_id
+	) {
+
+		if (
+			! kirin_training_product_enabled(
+				$product_id
+			)
+		) {
+			return $cart_item_data;
+		}
+
+		$token =
+			kirin_training_get_token();
+
+		if ( ! $token ) {
+			return $cart_item_data;
+		}
+
+		$data =
+			get_transient(
+				kirin_training_get_transient_key(
+					$token
+				)
+			);
+
+		if (
+			empty( $data ) ||
+			empty( $data['players'] )
+		) {
+			return $cart_item_data;
+		}
+
+		/*
+		 * Verify product matches.
+		 */
+		if (
+			empty(
+				$data['product_id']
+			) ||
+			intval(
+				$data['product_id']
+			) !== intval(
+				$product_id
+			)
+		) {
+			return $cart_item_data;
+		}
+
+
+		/*
+		 * Attach structured player data.
+		 */
+		$cart_item_data[
+			'_kirin_training_players'
+		] =
+			$data['players'];
+
+
+		/*
+		 * Store Forminator Entry ID.
+		 */
+		$cart_item_data[
+			'_kirin_forminator_entry_id'
+		] =
+			isset(
+				$data['entry_id']
+			)
+				? intval(
+					$data['entry_id']
+				)
+				: 0;
+
+
+		/*
+		 * Add a unique value so WooCommerce
+		 * does not accidentally merge this
+		 * registration with another cart item.
+		 */
+		$cart_item_data[
+			'_kirin_training_registration_token'
+		] =
+			$token;
+
+
+		return $cart_item_data;
+
+	},
+	10,
+	3
+);
+
+
+/**
+ * ============================================================
+ * 4. RESTORE CUSTOM DATA FROM WOOCOMMERCE SESSION
+ * ============================================================
+ */
+
+add_filter(
+	'woocommerce_get_cart_item_from_session',
+	function (
+		$cart_item,
+		$values
+	) {
+
+		$keys =
+			array(
+				'_kirin_training_players',
+				'_kirin_forminator_entry_id',
+				'_kirin_training_registration_token',
+			);
+
+		foreach (
+			$keys as $key
+		) {
+
+			if (
+				isset(
+					$values[ $key ]
+				)
+			) {
+
+				$cart_item[ $key ] =
+					$values[ $key ];
+			}
+		}
+
+		return $cart_item;
+
+	},
+	20,
+	2
+);
+
+
+/**
+ * ============================================================
+ * 5. SAVE PLAYER DATA INTO ORDER ITEM
+ * ============================================================
+ */
+
+add_action(
+	'woocommerce_checkout_create_order_line_item',
+	function (
+		$item,
+		$cart_item_key,
+		$values,
+		$order
+	) {
+
+		if (
+			empty(
+				$values[
+					'_kirin_training_players'
+				]
+			)
+		) {
+			return;
+		}
+
+		$players =
+			$values[
+				'_kirin_training_players'
+			];
+
+
+		/*
+		 * Structured data.
+		 *
+		 * This is what the future Training
+		 * Schedule engine will read.
+		 */
+		$item->add_meta_data(
+			'_kirin_training_players',
+			$players,
+			true
+		);
+
+
+		/*
+		 * Forminator Entry ID.
+		 */
+		if (
+			isset(
+				$values[
+					'_kirin_forminator_entry_id'
+				]
+			)
+		) {
+
+			$item->add_meta_data(
+				'_kirin_forminator_entry_id',
+				intval(
+					$values[
+						'_kirin_forminator_entry_id'
+					]
+				),
+				true
+			);
+		}
+
+
+		/*
+		 * Human-readable order information.
+		 */
+		foreach (
+			$players as $number => $player
+		) {
+
+			$player_number =
+				$number + 1;
+
+			$name =
+				trim(
+					$player['first_name'] .
+					' ' .
+					$player['last_name']
+				);
+
+
+			$item->add_meta_data(
+				'Training Player ' .
+				$player_number,
+				$name,
+				true
+			);
+
+
+			$item->add_meta_data(
+				'Player ' .
+				$player_number .
+				' DOB',
+				$player['birth_date'],
+				true
+			);
+
+
+			$item->add_meta_data(
+				'Player ' .
+				$player_number .
+				' Birth Year',
+				$player['birth_year'],
+				true
+			);
+
+
+			if (
+				! empty(
+					$player['gender']
+				)
+			) {
+
+				$item->add_meta_data(
+					'Player ' .
+					$player_number .
+					' Gender',
+					$player['gender'],
+					true
+				);
+			}
+		}
+
+	},
+	10,
+	4
+);
+
+
+/**
+ * ============================================================
+ * 6. CLEAN UP TEMPORARY REGISTRATION DATA
+ * ============================================================
+ *
+ * After WooCommerce creates the order, the
+ * temporary registration record is no longer
+ * needed.
+ * ============================================================
+ */
+
+add_action(
+	'woocommerce_checkout_order_processed',
+	function (
+		$order_id,
+		$posted_data,
+		$order
+	) {
+
+		$token =
+			kirin_training_get_token();
+
+		if ( ! $token ) {
+			return;
+		}
+
+		delete_transient(
+			kirin_training_get_transient_key(
+				$token
+			)
+		);
+
+	},
+	10,
+	3
+);
+
+
+/**
+ * ============================================================
+ * 7. REMOVE THE REGISTRATION COOKIE AFTER ORDER
+ * ============================================================
+ */
+
+add_action(
+	'woocommerce_thankyou',
+	function (
+		$order_id
+	) {
+
+		if ( headers_sent() ) {
+			return;
+		}
+
+		setcookie(
+			KIRIN_TRAINING_COOKIE,
+			'',
+			time() - 3600,
+			'/',
+			'',
+			is_ssl(),
+			true
+		);
+
+		setcookie(
+			'kirin_training_product_id',
+			'',
+			time() - 3600,
+			'/',
+			'',
+			is_ssl(),
+			true
+		);
+
+	},
+	20
+);
+
+
+/**
+ * ============================================================
+ * 8. PRODUCT ID COOKIE
+ *
+ * This is needed because Forminator submits through
+ * AJAX and the original ?ks_product= URL is not
+ * guaranteed to be present in the AJAX request.
+ * ============================================================
+ */
+
+add_action(
+	'wp_footer',
+	function () {
+
+		if (
+			! is_page(
+				'registration'
+			)
+		) {
+			return;
+		}
+
+		if (
+			empty(
+				$_GET['ks_product']
+			)
+		) {
+			return;
+		}
+
+		$product_id =
+			absint(
+				$_GET['ks_product']
+			);
+
+		if ( ! $product_id ) {
+			return;
+		}
+
+		if (
+			! kirin_training_product_enabled(
+				$product_id
+			)
+		) {
+			return;
+		}
+
+		?>
+
+		<script>
+
+		(function () {
+
+			const productId =
+				<?php
+				echo esc_js(
+					$product_id
+				);
+				?>;
+
+			document.cookie =
+				"kirin_training_product_id="
+				+ encodeURIComponent(
+					productId
+				)
+				+ "; path=/; max-age=1800; SameSite=Lax; Secure";
+
+		})();
+
+		</script>
+
+		<?php
+
+	}
+);

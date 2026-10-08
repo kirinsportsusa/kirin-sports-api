@@ -1,0 +1,70 @@
+/**
+ * Kirin Sports
+ * WooCommerce Product Registration Settings
+ *
+ * Version: 1.0
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+/**
+ * Add fields to Product Data > General
+ */
+add_action(
+	'woocommerce_product_options_general_product_data',
+	function () {
+
+		echo '<div class="options_group">';
+
+		woocommerce_wp_checkbox(
+			array(
+				'id'          => '_kirin_registration_required',
+				'label'       => 'Registration Required',
+				'description' => 'Require customers to complete a registration form before checkout.',
+			)
+		);
+
+		woocommerce_wp_text_input(
+			array(
+				'id'                => '_kirin_form_id',
+				'label'             => 'Registration Form ID',
+				'type'              => 'number',
+				'desc_tip'          => true,
+				'description'       => 'Enter the Forminator Form ID (example: 2751).',
+				'custom_attributes' => array(
+					'min'  => '1',
+					'step' => '1',
+				),
+			)
+		);
+
+		echo '</div>';
+
+	}
+);
+
+/**
+ * Save Product Meta
+ */
+add_action(
+	'woocommerce_admin_process_product_object',
+	function ( $product ) {
+
+		$product->update_meta_data(
+			'_kirin_registration_required',
+			isset( $_POST['_kirin_registration_required'] ) ? 'yes' : 'no'
+		);
+
+		if ( isset( $_POST['_kirin_form_id'] ) ) {
+
+			$product->update_meta_data(
+				'_kirin_form_id',
+				absint( $_POST['_kirin_form_id'] )
+			);
+
+		}
+
+	}
+);

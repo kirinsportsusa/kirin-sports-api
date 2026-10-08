@@ -130,5 +130,37 @@ add_action(
 			)
 		);
 
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/me
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/me',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_me',
+				'permission_callback' => 'kirin_api_require_authenticated_user',
+			)
+		);
+
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/players
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/players',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_players',
+				'permission_callback' => 'kirin_api_require_authenticated_user',
+			)
+		);
+
 	}
 );

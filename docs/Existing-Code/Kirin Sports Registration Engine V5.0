@@ -1,0 +1,432 @@
+/**
+ * Kirin Sports Registration Engine
+ * Version 5.0
+ *
+ * Supports:
+ * - Dynamic program name
+ * - Dynamic program unit price
+ * - Forminator registration
+ * - Forminator repeater / Add Item
+ * - WooCommerce quantity based on number of players
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+class KirinRegistration {
+
+	public function __construct() {
+
+		add_action(
+			'wp_enqueue_scripts',
+			[ $this, 'load_scripts' ]
+		);
+
+		add_action(
+			'template_redirect',
+			[ $this, 'registration_redirect' ]
+		);
+
+		add_action(
+			'template_redirect',
+			[ $this, 'protect_registration_page' ]
+		);
+
+		add_shortcode(
+			'kirin_program_name',
+			[ $this, 'program_name_shortcode' ]
+		);
+
+		add_shortcode(
+			'kirin_program_price',
+			[ $this, 'program_price_shortcode' ]
+		);
+
+	}
+
+
+	/**
+	 * Redirect to WooCommerce checkout
+	 */
+	public function registration_redirect() {
+
+		if ( ! is_page( 'registration-processing' ) ) {
+			return;
+		}
+
+		$product_id = isset( $_GET['ks_product'] )
+			? intval( $_GET['ks_product'] )
+			: 0;
+
+		if ( ! $product_id ) {
+			wp_die(
+				'Missing WooCommerce Product ID.'
+			);
+		}
+
+		$quantity = isset( $_GET['ks_quantity'] )
+			? max(
+				1,
+				intval( $_GET['ks_quantity'] )
+			)
+			: 1;
+
+		?>
+
+		<script>
+
+		window.location =
+			"/checkout/?add-to-cart=<?php echo esc_js( $product_id ); ?>&quantity=<?php echo esc_js( $quantity ); ?>";
+
+		</script>
+
+		<?php
+
+		exit;
+	}
+
+
+	/**
+	 * Protect registration page
+	 */
+	public function protect_registration_page() {
+
+		if ( ! is_page( 'registration' ) ) {
+			return;
+		}
+
+		if ( is_user_logged_in() ) {
+			return;
+		}
+
+		$current_url = home_url(
+			wp_unslash(
+				$_SERVER['REQUEST_URI']
+			)
+		);
+
+		wp_safe_redirect(
+			wc_get_page_permalink( 'myaccount' ) .
+			'?redirect_to=' .
+			urlencode( $current_url )
+		);
+
+		exit;
+	}
+
+
+	/**
+	 * JavaScript
+	 */
+	public function load_scripts() {
+
+		if ( ! is_page( 'registration' ) ) {
+			return;
+		}
+
+		wp_register_script(
+			'kirin-registration',
+			'',
+			[],
+			'5.0',
+			true
+		);
+
+		wp_enqueue_script(
+			'kirin-registration'
+		);
+
+
+		$javascript = <<<'JS'
+
+document.addEventListener("DOMContentLoaded", function () {
+
+	const params = new URLSearchParams(
+		window.location.search
+	);
+
+	const productId = params.get("ks_product");
+
+	console.log(
+		"Kirin Registration Engine v5.0"
+	);
+
+	console.log(
+		"Product:",
+		productId
+	);
+
+
+	/*
+	 * Count the current Forminator repeater rows.
+	 */
+	function getPlayerCount() {
+
+		const groups =
+			document.querySelectorAll(
+				"#forminator-module-2751 .forminator-grouped-fields"
+			);
+
+		let count = groups.length;
+
+		if ( count < 1 ) {
+			count = 1;
+		}
+
+		return count;
+	}
+
+
+	/*
+	 * Store the player count continuously.
+	 */
+	let playerCount = getPlayerCount();
+
+	console.log(
+		"Kirin: Initial player count:",
+		playerCount
+	);
+
+
+	/*
+	 * Watch the Forminator repeater for changes.
+	 *
+	 * This catches:
+	 * - Add Item
+	 * - Remove Item
+	 * - Forminator DOM changes
+	 */
+	const form =
+		document.querySelector(
+			"#forminator-module-2751"
+		);
+
+	if ( form ) {
+
+		const observer =
+			new MutationObserver(
+				function () {
+
+					const newCount =
+						getPlayerCount();
+
+					if (
+						newCount !== playerCount
+					) {
+
+						playerCount =
+							newCount;
+
+						console.log(
+							"Kirin: Player count changed:",
+							playerCount
+						);
+
+					}
+
+				}
+			);
+
+		observer.observe(
+			form,
+			{
+				childList: true,
+				subtree: true
+			}
+		);
+
+	}
+
+
+	/*
+	 * Detect successful Forminator submission.
+	 */
+	jQuery(document).ajaxSuccess(
+		function (
+			event,
+			xhr,
+			settings
+		) {
+
+			if (
+				!settings.url ||
+				!settings.url.includes(
+					"admin-ajax.php"
+				)
+			) {
+				return;
+			}
+
+
+			let response;
+
+			try {
+
+				response =
+					JSON.parse(
+						xhr.responseText
+					);
+
+			} catch (e) {
+
+				return;
+
+			}
+
+
+			/*
+			 * Make sure this is a successful
+			 * Forminator submission.
+			 */
+			if (
+				!response.success ||
+				!response.data ||
+				!response.data.form_id
+			) {
+				return;
+			}
+
+
+			if (
+				String(
+					response.data.form_id
+				) !== "2751"
+			) {
+				return;
+			}
+
+
+			console.log(
+				"Kirin: Forminator form submitted."
+			);
+
+
+			/*
+			 * IMPORTANT:
+			 *
+			 * Use the player count that we
+			 * tracked BEFORE submission.
+			 */
+			console.log(
+				"Kirin: Number of players/items:",
+				playerCount
+			);
+
+			console.log(
+				"Kirin: Product:",
+				productId
+			);
+
+			console.log(
+				"Kirin: WooCommerce quantity:",
+				playerCount
+			);
+
+
+			/*
+			 * Send player count to the
+			 * registration processing page.
+			 */
+			window.location =
+				"/registration-processing/?ks_product=" +
+				encodeURIComponent(
+					productId
+				) +
+				"&ks_quantity=" +
+				encodeURIComponent(
+					playerCount
+				);
+
+		}
+	);
+
+});
+
+JS;
+
+
+		wp_add_inline_script(
+			'kirin-registration',
+			$javascript
+		);
+
+	}
+
+
+	/**
+	 * Get WooCommerce product
+	 */
+	private function get_product() {
+
+		if (
+			empty(
+				$_GET['ks_product']
+			)
+		) {
+			return false;
+		}
+
+		$product_id =
+			intval(
+				$_GET['ks_product']
+			);
+
+		return wc_get_product(
+			$product_id
+		);
+	}
+
+
+	/**
+	 * Program name
+	 */
+	public function program_name_shortcode() {
+
+		$product =
+			$this->get_product();
+
+		if ( ! $product ) {
+			return '';
+		}
+
+		return sprintf(
+			'<div class="kirin-program-row">
+				<span class="kirin-label">Program Name:</span>
+				<span class="kirin-value">%s</span>
+			</div>',
+			esc_html(
+				$product->get_name()
+			)
+		);
+	}
+
+
+	/**
+	 * Program price
+	 */
+	public function program_price_shortcode() {
+
+		$product =
+			$this->get_product();
+
+		if ( ! $product ) {
+			return '';
+		}
+
+		return sprintf(
+			'<div class="kirin-program-row">
+				<span class="kirin-label">Price:</span>
+				<span class="kirin-value">$%s</span>
+			</div>',
+			number_format(
+				(float) $product->get_price(),
+				2
+			)
+		);
+	}
+
+}
+
+
+new KirinRegistration();

@@ -1,0 +1,440 @@
+/**
+ * ============================================================
+ * Kirin Sports
+ * Registration Product Access Control
+ *
+ * Version: 1.2
+ *
+ * PURPOSE:
+ *
+ * ONLY WooCommerce products with:
+ *
+ *     Registration Required = Yes
+ *
+ * are affected.
+ *
+ * 1. Direct product page is redirected to Registration.
+ * 2. Product links are removed from Cart.
+ * 3. Registration-required products cannot remain in a
+ *    guest user's cart.
+ * 4. If a guest opens Cart with a registration-required
+ *    product, that product is removed and the guest is
+ *    redirected to Registration.
+ *
+ * Products with Registration Required = No are untouched.
+ *
+ * ============================================================
+ */
+
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
+
+/**
+ * ============================================================
+ * HELPER
+ *
+ * Check whether a WooCommerce product requires registration.
+ * ============================================================
+ */
+
+if ( ! function_exists( 'kirin_product_requires_registration' ) ) {
+
+	function kirin_product_requires_registration( $product_id ) {
+
+		$product_id = absint( $product_id );
+
+		if ( ! $product_id ) {
+			return false;
+		}
+
+		$product = wc_get_product( $product_id );
+
+		if ( ! $product ) {
+			return false;
+		}
+
+		return (
+			'yes' === $product->get_meta(
+				'_kirin_registration_required',
+				true
+			)
+		);
+	}
+}
+
+
+/**
+ * ============================================================
+ * 1. PROTECT REGISTRATION-REQUIRED PRODUCT PAGES
+ *
+ * IMPORTANT:
+ *
+ * Uses WooCommerce is_product() instead of
+ * is_singular( 'product' ).
+ *
+ * ============================================================
+ */
+
+add_action(
+	'template_redirect',
+	function () {
+
+		/**
+		 * Do not run in admin.
+		 */
+		if ( is_admin() ) {
+			return;
+		}
+
+
+		/**
+		 * Do not interfere with AJAX requests.
+		 */
+		if (
+			function_exists( 'wp_doing_ajax' ) &&
+			wp_doing_ajax()
+		) {
+			return;
+		}
+
+
+		/**
+		 * Make sure WooCommerce is available.
+		 */
+		if (
+			! function_exists( 'is_product' )
+		) {
+			return;
+		}
+
+
+		/**
+		 * ONLY run on an actual WooCommerce
+		 * single product page.
+		 */
+		if ( ! is_product() ) {
+			return;
+		}
+
+
+		/**
+		 * Get current product ID.
+		 */
+		$product_id = get_queried_object_id();
+
+		if ( ! $product_id ) {
+			return;
+		}
+
+
+		/**
+		 * ====================================================
+		 * CRITICAL CHECK
+		 *
+		 * ONLY Registration Required = YES is protected.
+		 * ====================================================
+		 */
+
+		if (
+			! kirin_product_requires_registration(
+				$product_id
+			)
+		) {
+			return;
+		}
+
+
+		/**
+		 * ====================================================
+		 * Build Registration URL.
+		 *
+		 * The existing Kirin Registration Engine expects:
+		 *
+		 * /registration/?ks_product=PRODUCT_ID
+		 * ====================================================
+		 */
+
+		$registration_url = add_query_arg(
+			'ks_product',
+			$product_id,
+			home_url( '/registration/' )
+		);
+
+
+		/**
+		 * Redirect.
+		 *
+		 * 302 = temporary redirect.
+		 *
+		 * This is intentional while we test.
+		 */
+		wp_safe_redirect(
+			$registration_url,
+			302
+		);
+
+		exit;
+
+	},
+	1
+);
+
+
+/**
+ * ============================================================
+ * 2. REMOVE PRODUCT LINK FROM CART
+ *
+ * Registration-required products remain visible,
+ * but their product name is no longer clickable.
+ * ============================================================
+ */
+
+add_filter(
+	'woocommerce_cart_item_permalink',
+	function (
+		$product_permalink,
+		$cart_item,
+		$cart_item_key
+	) {
+
+		if (
+			empty(
+				$cart_item['product_id']
+			)
+		) {
+			return $product_permalink;
+		}
+
+
+		$product_id = absint(
+			$cart_item['product_id']
+		);
+
+
+		/**
+		 * ONLY remove links for products where
+		 * Registration Required = Yes.
+		 */
+		if (
+			kirin_product_requires_registration(
+				$product_id
+			)
+		) {
+			return '';
+		}
+
+
+		/**
+		 * All other products behave normally.
+		 */
+		return $product_permalink;
+
+	},
+	10,
+	3
+);
+
+
+/**
+ * ============================================================
+ * 3. PROTECT THE CART FOR GUEST USERS
+ *
+ * If a guest opens the Cart and a registration-required
+ * product is present:
+ *
+ *     - Remove the registration-required product.
+ *     - Keep all other products.
+ *     - Redirect guest to Registration.
+ *
+ * This prevents the user from bypassing registration by
+ * clicking "View Cart" after being asked to log in.
+ *
+ * ============================================================
+ */
+
+add_action(
+	'template_redirect',
+	function () {
+
+		/**
+		 * Do not run in admin.
+		 */
+		if ( is_admin() ) {
+			return;
+		}
+
+
+		/**
+		 * Do not run for logged-in customers.
+		 *
+		 * Logged-in users are allowed to continue through
+		 * the normal registration workflow.
+		 */
+		if ( is_user_logged_in() ) {
+			return;
+		}
+
+
+		/**
+		 * Make sure WooCommerce is available.
+		 */
+		if (
+			! function_exists( 'WC' )
+		) {
+			return;
+		}
+
+
+		/**
+		 * Make sure the cart exists.
+		 */
+		if (
+			! WC()->cart
+		) {
+			return;
+		}
+
+
+		/**
+		 * ONLY run on the WooCommerce Cart page.
+		 *
+		 * We intentionally do not remove items merely because
+		 * the guest is browsing another page.
+		 */
+		if (
+			! function_exists( 'is_cart' ) ||
+			! is_cart()
+		) {
+			return;
+		}
+
+
+		/**
+		 * Prevent repeated redirects during the same request.
+		 */
+		static $kirin_cart_checked = false;
+
+		if ( $kirin_cart_checked ) {
+			return;
+		}
+
+		$kirin_cart_checked = true;
+
+
+		/**
+		 * Store the first registration-required product found.
+		 *
+		 * If multiple protected products exist, we redirect to
+		 * the first one found. The other protected products are
+		 * also removed from the guest cart.
+		 */
+		$registration_product_id = 0;
+
+
+		/**
+		 * Keep track of cart item keys that need removal.
+		 */
+		$remove_cart_items = array();
+
+
+		/**
+		 * Examine every cart item.
+		 */
+		foreach ( WC()->cart->get_cart() as $cart_item_key => $cart_item ) {
+
+			if (
+				empty(
+					$cart_item['product_id']
+				)
+			) {
+				continue;
+			}
+
+
+			$product_id = absint(
+				$cart_item['product_id']
+			);
+
+
+			/**
+			 * Only registration-required products are affected.
+			 */
+			if (
+				kirin_product_requires_registration(
+					$product_id
+				)
+			) {
+
+				$remove_cart_items[] = $cart_item_key;
+
+
+				/**
+				 * Remember the first protected product.
+				 */
+				if ( ! $registration_product_id ) {
+
+					$registration_product_id = $product_id;
+
+				}
+
+			}
+
+		}
+
+
+		/**
+		 * Nothing to do if the cart contains no
+		 * registration-required products.
+		 */
+		if ( empty( $remove_cart_items ) ) {
+			return;
+		}
+
+
+		/**
+		 * Remove protected products from the guest cart.
+		 */
+		foreach ( $remove_cart_items as $cart_item_key ) {
+
+			WC()->cart->remove_cart_item(
+				$cart_item_key
+			);
+
+		}
+
+
+		/**
+		 * Save the cart changes.
+		 */
+		WC()->cart->calculate_totals();
+
+
+		/**
+		 * ====================================================
+		 * Redirect to Registration.
+		 * ====================================================
+		 */
+
+		if ( $registration_product_id ) {
+
+			$registration_url = add_query_arg(
+				'ks_product',
+				$registration_product_id,
+				home_url( '/registration/' )
+			);
+
+
+			wp_safe_redirect(
+				$registration_url,
+				302
+			);
+
+			exit;
+
+		}
+
+	},
+	2
+);
