@@ -162,5 +162,33 @@ add_action(
 			)
 		);
 
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/registrations
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/registrations',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_registrations',
+				'permission_callback' => 'kirin_api_require_authenticated_user',
+				'args'                => array(
+					'page'     => array(
+						'type'              => 'integer',
+						'default'           => 1,
+						'sanitize_callback' => 'absint',
+					),
+					'per_page' => array(
+						'type'              => 'integer',
+						'default'           => 20,
+						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
 	}
 );
