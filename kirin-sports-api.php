@@ -190,5 +190,35 @@ add_action(
 			)
 		);
 
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/schedule
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/schedule',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_schedule',
+				'permission_callback' => 'kirin_api_require_authenticated_user',
+				'args'                => array(
+					'from'     => array(
+						'type' => 'string',
+					),
+					'to'       => array(
+						'type' => 'string',
+					),
+					'page'     => array(
+						'type' => 'integer',
+					),
+					'per_page' => array(
+						'type' => 'integer',
+					),
+				),
+			)
+		);
+
 	}
 );
