@@ -220,5 +220,34 @@ add_action(
 			)
 		);
 
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/orders
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/orders',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_orders',
+				'permission_callback' => 'kirin_api_require_authenticated_user',
+				'args'                => array(
+					'page'     => array(
+						'type'    => 'integer',
+						'default' => 1,
+						'minimum' => 1,
+					),
+					'per_page' => array(
+						'type'    => 'integer',
+						'default' => 20,
+						'minimum' => 1,
+						'maximum' => 100,
+					),
+				),
+			)
+		);
+
 	}
 );
