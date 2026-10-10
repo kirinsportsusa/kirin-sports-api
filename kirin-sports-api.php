@@ -249,5 +249,62 @@ add_action(
 			)
 		);
 
+
+		/*
+		 * --------------------------------------------------------
+		 * GET /wp-json/kirin/v1/news
+		 * GET /wp-json/kirin/v1/news/categories
+		 * GET /wp-json/kirin/v1/news/{id}
+		 * --------------------------------------------------------
+		 */
+		register_rest_route(
+			'kirin/v1',
+			'/news',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_news',
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'page'     => array(
+						'type'              => 'integer',
+						'default'           => 1,
+						'validate_callback' => 'kirin_api_news_validate_integer',
+					),
+					'per_page' => array(
+						'type'              => 'integer',
+						'default'           => 20,
+						'validate_callback' => 'kirin_api_news_validate_integer',
+					),
+					'category' => array(
+						'type'              => 'integer',
+						'validate_callback' => 'kirin_api_news_validate_integer',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			'kirin/v1',
+			'/news/categories',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_news_categories',
+				'permission_callback' => '__return_true',
+			)
+		);
+
+		register_rest_route(
+			'kirin/v1',
+			'/news/(?P<id>\d+)',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => 'kirin_api_news_article',
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'id' => array( 'type' => 'integer' ),
+				),
+			)
+		);
+
 	}
 );
